@@ -141,6 +141,16 @@ function snapshotState() {
   };
 }
 
+function getBetAdvice(equity, playerCount) {
+  const base = 100 / playerCount;  // 기대 에퀴티 (예: 3명 → 33.3%)
+  const ratio = equity / base;     // 기대 대비 비율
+  if (ratio >= 2.0) return { action: "ALL-IN",  label: "올인",   tier: "allin"  };
+  if (ratio >= 1.4) return { action: "RAISE",   label: "레이즈", tier: "raise"  };
+  if (ratio >= 0.9) return { action: "CALL",    label: "콜",     tier: "call"   };
+  if (ratio >= 0.65) return { action: "CHECK",  label: "체크",   tier: "check"  };
+  return                   { action: "FOLD",    label: "폴드",   tier: "fold"   };
+}
+
 function setStatus(kind, text) {
   elements.statusText.textContent = text;
   elements.liveState.style.color = kind === "error" ? "var(--danger)" : kind === "analyzing" ? "#ffd478" : "var(--mint)";
@@ -190,13 +200,20 @@ function updateResultUI(result) {
   setStatus("live", "ANALYSIS UPDATED");
   setMethod(result.method === "exact" ? "EXACT" : "MONTE CARLO");
   elements.updatedAt.textContent = `Updated: ${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date())}`;
-  elements.resultsList.innerHTML = result.results.map((player, index) => `
+  elements.resultsList.innerHTML = result.results.map((player, index) => {
+    const advice = getBetAdvice(player.equity, result.results.length);
+    return `
     <article class="result-card ${index === 0 ? "me" : ""}">
       <div class="result-card-header"><strong>${escapeHtml(player.name)}</strong><span>WIN ${player.win.toFixed(2)}%</span></div>
       <div class="result-line"><span>EQUITY</span><b>${player.equity.toFixed(2)}%</b></div>
       <div class="equity-bar" aria-label="${escapeHtml(player.name)} Equity ${player.equity.toFixed(2)}%"><span style="width: ${player.equity.toFixed(2)}%"></span></div>
+      <div class="bet-advice bet-advice--${advice.tier}">
+        <span class="bet-advice__action">${advice.action}</span>
+        <span class="bet-advice__label">${advice.label}</span>
+      </div>
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function addPlayer() {

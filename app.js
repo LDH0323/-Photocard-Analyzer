@@ -6,8 +6,9 @@ const MIN_PLAYERS = 2;
 
 const state = {
   board: ["", "", "", "", ""],
+  dead: ["", "", "", ""],
   players: [
-    { id: newId(), name: "ME", cards: ["", ""] },
+    { id: newId(), name: "PLAYER 1", cards: ["", ""] },
     { id: newId(), name: "PLAYER 2", cards: ["", ""] },
     { id: newId(), name: "PLAYER 3", cards: ["", ""] },
   ],
@@ -16,13 +17,15 @@ const state = {
 let analysisTimer = null;
 let analysisVersion = 0;
 let activeWorker = null;
-let displayedResults = null;
 
 const elements = {
   boardInputs: document.querySelector("#boardInputs"),
+  deadInputs: document.querySelector("#deadInputs"),
+  deadCaption: document.querySelector("#deadCardCaption"),
   playersInputs: document.querySelector("#playersInputs"),
   playerCount: document.querySelector("#playerCount"),
   localCardCount: document.querySelector("#localCardCount"),
+  deadCardCount: document.querySelector("#deadCardCount"),
   playerCardCount: document.querySelector("#playerCardCount"),
   localCardCaption: document.querySelector("#localCardCaption"),
   liveState: document.querySelector("#liveState"),
@@ -31,16 +34,6 @@ const elements = {
   validationMessage: document.querySelector("#validationMessage"),
   methodBadge: document.querySelector("#methodBadge"),
   resultsList: document.querySelector("#resultsList"),
-  potSize: document.querySelector("#potSize"),
-  opponentBet: document.querySelector("#opponentBet"),
-  callAmount: document.querySelector("#callAmount"),
-  ownStack: document.querySelector("#ownStack"),
-  betEquity: document.querySelector("#betEquity"),
-  requiredEquity: document.querySelector("#requiredEquity"),
-  callEv: document.querySelector("#callEv"),
-  maxCall: document.querySelector("#maxCall"),
-  recommendedBet: document.querySelector("#recommendedBet"),
-  betDecision: document.querySelector("#betDecision"),
 };
 
 function newId() {
@@ -54,13 +47,20 @@ function escapeHtml(value) {
 function normalizeCard(value) {
   const compact = value.trim().replace(/\s/g, "");
   if (!compact || compact === "?") return "";
-  if (/^10[CDHS]$/i.test(compact)) return `T${compact[2].toLowerCase()}`;
-  if (/^[2-9TJQKA][CDHS]$/i.test(compact)) return `${compact[0].toUpperCase()}${compact[1].toLowerCase()}`;
+  // 수트+랭크 형식: S/H/D/C + 랭크 (예: Sa, H4, D10, CK)
+  // 10은 T로 정규화
+  if (/^[SHDC]10$/i.test(compact)) return `T${compact[0].toLowerCase()}`;
+  if (/^[SHDC][2-9TJQKA]$/i.test(compact)) return `${compact[1].toUpperCase()}${compact[0].toLowerCase()}`;
   return null;
 }
 
 function cardInput(value, location, index) {
-  return `<input class="card-input" inputmode="text" maxlength="3" spellcheck="false" autocomplete="off" placeholder="?" value="${escapeHtml(value)}" data-location="${location}" data-index="${index}" aria-label="${location === "board" ? `로컬 카드 ${index + 1}` : `플레이어 카드 ${index + 1}`}" />`;
+  const ariaLabel = location === "board"
+    ? `로컬 카드 ${index + 1} (예: Sa, H4, D10)`
+    : location === "dead"
+      ? `버린 카드 ${index + 1} (예: Sa, H4, D10)`
+      : `플레이어 카드 ${index + 1} (예: Sa, H4, D10)`;
+  return `<input class="card-input" inputmode="text" maxlength="3" spellcheck="false" autocomplete="off" placeholder="?" value="${escapeHtml(value)}" data-location="${location}" data-index="${index}" aria-label="${ariaLabel}" />`;
 }
 
 function renderSelectors() {
@@ -69,6 +69,7 @@ function renderSelectors() {
     return `<option value="${count}" ${count === state.players.length ? "selected" : ""}>${count}명</option>`;
   }).join("");
   elements.localCardCount.innerHTML = Array.from({ length: 6 }, (_, count) => `<option value="${count}" ${count === state.board.length ? "selected" : ""}>${count}장</option>`).join("");
+  elements.deadCardCount.innerHTML = Array.from({ length: 13 }, (_, count) => `<option value="${count}" ${count === state.dead.length ? "selected" : ""}>${count}장</option>`).join("");
   const playerCardCount = state.players[0].cards.length;
   elements.playerCardCount.innerHTML = Array.from({ length: 7 }, (_, offset) => {
     const count = offset + 1;
@@ -79,11 +80,13 @@ function renderSelectors() {
 function renderInputs() {
   elements.boardInputs.innerHTML = state.board.map((card, index) => cardInput(card, "board", index)).join("");
   elements.localCardCaption.textContent = `${state.board.length} CARDS`;
+  elements.deadInputs.innerHTML = state.dead.map((card, index) => cardInput(card, "dead", index)).join("");
+  elements.deadCaption.textContent = `${state.dead.length} CARDS`;
   elements.playersInputs.innerHTML = state.players.map((player, playerIndex) => `
     <div class="player-row ${playerIndex === 0 ? "me" : ""}" data-player-id="${player.id}">
       <input class="player-name" maxlength="18" value="${escapeHtml(player.name)}" data-name-id="${player.id}" aria-label="플레이어 이름" />
       <div class="card-inputs">${player.cards.map((card, cardIndex) => cardInput(card, player.id, cardIndex)).join("")}</div>
-      ${playerIndex === 0 ? "" : `<button class="remove-player" type="button" data-remove-id="${player.id}" aria-label="${escapeHtml(player.name)} 삭제">×</button>`}
+      ${playerIndex === 0 || state.players.length <= 1 ? "" : `<button class="remove-player" type="button" data-remove-id="${player.id}" aria-label="${escapeHtml(player.name)} 삭제">×</button>`}
     </div>
   `).join("");
   applyInputValidity();
@@ -91,6 +94,7 @@ function renderInputs() {
 
 function getCardsWithLocations() {
   const cards = state.board.map((value, index) => ({ value, label: `공개 카드 ${index + 1}` }));
+  state.dead.forEach((value, index) => cards.push({ value, label: `버린 카드 ${index + 1}` }));
   state.players.forEach((player) => player.cards.forEach((value, index) => cards.push({ value, label: `${player.name || "플레이어"} 카드 ${index + 1}` })));
   return cards;
 }
@@ -109,7 +113,7 @@ function validateState() {
     }
   });
   const totalCardsPerHand = state.board.length + state.players[0].cards.length;
-  const cardsInPlay = state.board.length + state.players.length * state.players[0].cards.length;
+  const cardsInPlay = state.board.length + state.players.length * state.players[0].cards.length + state.dead.length;
   const configurationError = totalCardsPerHand < 5
     ? "로컬 카드와 플레이어 카드를 합쳐 최소 5장으로 설정하세요."
     : cardsInPlay > 52
@@ -126,7 +130,7 @@ function applyInputValidity() {
     input.classList.toggle("invalid", normalized === null || Boolean(normalized && duplicates.has(normalized)));
     input.classList.toggle("known", Boolean(normalized));
   });
-  elements.validationMessage.textContent = validation.configurationError || (validation.invalid.length ? "카드는 Ah, Kd, 7c처럼 입력하세요." : validation.duplicateLabels.length ? `같은 카드가 중복되었습니다: ${validation.duplicateLabels.join(", ")}` : "");
+  elements.validationMessage.textContent = validation.configurationError || (validation.invalid.length ? "카드는 Sa, H4, D10, CK처럼 수트+랭크 순서로 입력하세요." : validation.duplicateLabels.length ? `같은 카드가 중복되었습니다: ${validation.duplicateLabels.join(", ")}` : "");
   return validation;
 }
 
@@ -134,6 +138,7 @@ function snapshotState() {
   const normalizeCards = (cards) => cards.map((card) => normalizeCard(card) || "");
   return {
     board: normalizeCards(state.board),
+    dead: normalizeCards(state.dead),
     players: state.players.map((player) => ({ name: player.name.trim() || "PLAYER", cards: normalizeCards(player.cards) })),
   };
 }
@@ -184,7 +189,6 @@ function startAnalysis(version) {
 }
 
 function updateResultUI(result) {
-  displayedResults = result.results;
   setStatus("live", "ANALYSIS UPDATED");
   setMethod(result.method === "exact" ? "EXACT" : "MONTE CARLO");
   elements.updatedAt.textContent = `Updated: ${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date())}`;
@@ -195,62 +199,6 @@ function updateResultUI(result) {
       <div class="equity-bar" aria-label="${escapeHtml(player.name)} Equity ${player.equity.toFixed(2)}%"><span style="width: ${player.equity.toFixed(2)}%"></span></div>
     </article>
   `).join("");
-  updateBettingGuide();
-}
-
-function inputAmount(input) {
-  return Math.max(0, Number(input.value) || 0);
-}
-
-function formatAmount(amount) {
-  if (!Number.isFinite(amount)) return "무제한";
-  return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(Math.max(0, amount));
-}
-
-function setBetDecision(text, kind) {
-  elements.betDecision.textContent = text;
-  elements.betDecision.className = `bet-decision ${kind}`;
-}
-
-function updateBettingGuide() {
-  const meEquity = displayedResults?.[0]?.equity;
-  const pot = inputAmount(elements.potSize);
-  const opponentBet = inputAmount(elements.opponentBet);
-  const suppliedCall = inputAmount(elements.callAmount);
-  const call = suppliedCall || opponentBet;
-  const stack = inputAmount(elements.ownStack);
-  const potBeforeCall = pot + opponentBet;
-
-  elements.betEquity.textContent = Number.isFinite(meEquity) ? `${meEquity.toFixed(2)}%` : "—";
-  if (!Number.isFinite(meEquity) || potBeforeCall <= 0) {
-    elements.requiredEquity.textContent = "—";
-    elements.callEv.textContent = "—";
-    elements.maxCall.textContent = "—";
-    elements.recommendedBet.textContent = "—";
-    setBetDecision("WAITING", "");
-    return;
-  }
-
-  const equity = meEquity / 100;
-  const requiredEquity = call > 0 ? call / (potBeforeCall + call) : 0;
-  const expectedValue = call > 0 ? equity * potBeforeCall - (1 - equity) * call : 0;
-  const theoreticalMaxCall = equity >= 1 ? Infinity : equity * potBeforeCall / (1 - equity);
-  const cappedMaxCall = stack > 0 ? Math.min(theoreticalMaxCall, stack) : theoreticalMaxCall;
-  elements.requiredEquity.textContent = call > 0 ? `${(requiredEquity * 100).toFixed(2)}%` : "0.00%";
-  elements.callEv.textContent = call > 0 ? `${expectedValue >= 0 ? "+" : "−"}${formatAmount(Math.abs(expectedValue))}` : "—";
-  elements.callEv.style.color = call > 0 ? (expectedValue >= 0 ? "var(--mint)" : "var(--danger)") : "";
-  elements.maxCall.textContent = formatAmount(cappedMaxCall);
-
-  const bettingPot = potBeforeCall || pot;
-  let betFraction = 0;
-  if (equity >= 0.7) betFraction = 0.75;
-  else if (equity >= 0.58) betFraction = 0.5;
-  else if (equity >= 0.5) betFraction = 0.33;
-  const betAmount = stack > 0 ? Math.min(bettingPot * betFraction, stack) : bettingPot * betFraction;
-  elements.recommendedBet.textContent = betFraction ? `팟 ${(betFraction * 100).toFixed(0)}% · ${formatAmount(betAmount)}` : "CHECK / 소액 베팅";
-
-  if (call > 0) setBetDecision(expectedValue >= 0 ? "CALL +EV" : "FOLD −EV", expectedValue >= 0 ? "positive" : "negative");
-  else setBetDecision(betFraction ? "BET SPOT" : "CAUTION", betFraction ? "positive" : "neutral");
 }
 
 function addPlayer() {
@@ -271,6 +219,7 @@ function handleDocumentInput(event) {
   if (card) {
     const index = Number(card.dataset.index);
     if (card.dataset.location === "board") state.board[index] = card.value;
+    else if (card.dataset.location === "dead") state.dead[index] = card.value;
     else {
       const player = state.players.find(({ id }) => id === card.dataset.location);
       if (player) player.cards[index] = card.value;
@@ -310,6 +259,12 @@ elements.localCardCount.addEventListener("change", () => {
   renderInputs();
   scheduleAnalysis();
 });
+elements.deadCardCount.addEventListener("change", () => {
+  state.dead = resizeCards(state.dead, Number(elements.deadCardCount.value));
+  renderSelectors();
+  renderInputs();
+  scheduleAnalysis();
+});
 elements.playerCardCount.addEventListener("change", () => {
   const count = Number(elements.playerCardCount.value);
   state.players.forEach((player) => { player.cards = resizeCards(player.cards, count); });
@@ -317,7 +272,6 @@ elements.playerCardCount.addEventListener("change", () => {
   renderInputs();
   scheduleAnalysis();
 });
-[elements.potSize, elements.opponentBet, elements.callAmount, elements.ownStack].forEach((input) => input.addEventListener("input", updateBettingGuide));
 
 renderSelectors();
 renderInputs();

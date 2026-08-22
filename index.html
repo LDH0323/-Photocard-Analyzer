@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#070b17" />
+    <meta name="theme-color" content="#050505" />
     <title>실시간 포커 분석기</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -35,6 +35,9 @@
               <label class="player-count">로컬 카드
                 <select id="localCardCount" aria-label="로컬 카드 수"></select>
               </label>
+              <label class="player-count">버린 카드
+                <select id="deadCardCount" aria-label="버린 카드 수"></select>
+              </label>
               <label class="player-count">플레이어당 카드
                 <select id="playerCardCount" aria-label="플레이어당 카드 수"></select>
               </label>
@@ -43,8 +46,8 @@
 
           <div class="hint-card">
             <span>입력 형식</span>
-            <strong>Ah, Kd, 7c</strong>
-            <small>? 또는 빈칸은 알 수 없는 카드입니다.</small>
+            <strong>Sa, H4, D10</strong>
+            <small>S·H·D·C + 숫자/A/K/Q/J &nbsp;·&nbsp; ? 또는 빈칸은 알 수 없는 카드</small>
           </div>
 
           <section class="board-section" aria-labelledby="boardTitle">
@@ -62,6 +65,14 @@
             <div id="playersInputs" class="players-inputs"></div>
           </section>
 
+          <section class="dead-section" aria-labelledby="deadTitle">
+            <div class="row-label">
+              <div><p class="eyebrow">DEAD CARDS</p><h3 id="deadTitle">버린 카드</h3></div>
+              <span id="deadCardCaption">0 CARDS</span>
+            </div>
+            <div class="card-inputs dead-inputs" id="deadInputs"></div>
+          </section>
+
           <p class="validation-message" id="validationMessage" role="status"></p>
         </section>
 
@@ -74,28 +85,6 @@
             <span class="method-badge" id="methodBadge">WAITING</span>
           </div>
           <div class="results-list" id="resultsList" aria-live="polite"></div>
-          <section class="betting-guide" aria-labelledby="bettingTitle">
-            <div class="betting-heading">
-              <div>
-                <p class="eyebrow">BETTING GUIDE</p>
-                <h3 id="bettingTitle">베팅 계산</h3>
-              </div>
-              <strong class="bet-decision" id="betDecision">WAITING</strong>
-            </div>
-            <div class="bet-inputs">
-              <label>기존 팟<input id="potSize" type="number" min="0" step="any" inputmode="decimal" placeholder="0" /></label>
-              <label>상대 베팅<input id="opponentBet" type="number" min="0" step="any" inputmode="decimal" placeholder="0" /></label>
-              <label>콜 금액<input id="callAmount" type="number" min="0" step="any" inputmode="decimal" placeholder="상대 베팅과 동일" /></label>
-              <label>내 스택<input id="ownStack" type="number" min="0" step="any" inputmode="decimal" placeholder="제한 없음" /></label>
-            </div>
-            <div class="bet-results">
-              <div><span>ME EQUITY</span><b id="betEquity">—</b></div>
-              <div><span>필요 EQUITY</span><b id="requiredEquity">—</b></div>
-              <div><span>콜 EV</span><b id="callEv">—</b></div>
-              <div><span>최대 콜</span><b id="maxCall">—</b></div>
-              <div class="bet-recommendation"><span>권장 베팅</span><b id="recommendedBet">—</b></div>
-            </div>
-          </section>
         </aside>
       </section>
     </main>

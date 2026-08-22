@@ -85,7 +85,8 @@ function drawCards(deck, count) {
 function resultPayload(gameState) {
   const players = gameState.players.map((player) => ({ ...player, cards: [...player.cards] }));
   const board = [...gameState.board];
-  const used = [...board, ...players.flatMap((player) => player.cards)].filter(Boolean);
+  const dead = (gameState.dead || []).filter(Boolean);
+  const used = [...board, ...players.flatMap((player) => player.cards), ...dead].filter(Boolean);
   const remaining = DECK.filter((card) => !used.includes(card));
   const boardUnknownIndexes = board.map((card, index) => card ? -1 : index).filter((index) => index >= 0);
   const allHolesKnown = players.every((player) => player.cards.every(Boolean));

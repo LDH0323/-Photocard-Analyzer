@@ -47,10 +47,8 @@ function escapeHtml(value) {
 function normalizeCard(value) {
   const compact = value.trim().replace(/\s/g, "");
   if (!compact || compact === "?") return "";
-  // 수트+랭크 형식: S/H/D/C + 랭크 (예: Sa, H4, D10, CK)
-  // 10은 T로 정규화
-  if (/^[SHDC]10$/i.test(compact)) return `T${compact[0].toLowerCase()}`;
-  if (/^[SHDC][2-9TJQKA]$/i.test(compact)) return `${compact[1].toUpperCase()}${compact[0].toLowerCase()}`;
+  if (/^10[CDHS]$/i.test(compact)) return `T${compact[2].toLowerCase()}`;
+  if (/^[2-9TJQKA][CDHS]$/i.test(compact)) return `${compact[0].toUpperCase()}${compact[1].toLowerCase()}`;
   return null;
 }
 
@@ -130,7 +128,7 @@ function applyInputValidity() {
     input.classList.toggle("invalid", normalized === null || Boolean(normalized && duplicates.has(normalized)));
     input.classList.toggle("known", Boolean(normalized));
   });
-  elements.validationMessage.textContent = validation.configurationError || (validation.invalid.length ? "카드는 Sa, H4, D10, CK처럼 수트+랭크 순서로 입력하세요." : validation.duplicateLabels.length ? `같은 카드가 중복되었습니다: ${validation.duplicateLabels.join(", ")}` : "");
+  elements.validationMessage.textContent = validation.configurationError || (validation.invalid.length ? "카드는 Ah, Kd, 7c처럼 입력하세요." : validation.duplicateLabels.length ? `같은 카드가 중복되었습니다: ${validation.duplicateLabels.join(", ")}` : "");
   return validation;
 }
 
